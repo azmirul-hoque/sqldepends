@@ -1,0 +1,80 @@
+# SQL Dependency Analysis Pipeline for Azure DevOps
+
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+    - 'src/*'
+    - '*.cs'
+    - '*.vb'
+    - '*.sql'
+
+pr:
+  branches:
+    include:
+    - main
+
+parameters:
+- name: targetDirectory
+  displayName: 'Target Directory to Analyze'
+  type: string
+  default: '$(Build.SourcesDirectory)'
+
+- name: includeDatabaseValidation
+  displayName: 'Validate Against Live Database'
+  type: boolean
+  default: false
+
+variables:
+  analysisVersion: '2.0.0'
+  pythonVersion: '3.9'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: AnalyzeCode
+  displayName: 'SQL Dependency Analysis'
+  jobs:
+  - job: RunAnalysis
+    displayName: 'Run SQL Dependency Analysis'
+    
+    steps:
+    - checkout: self
+      fetchDepth: 0
+      displayName: 'Checkout Source Code'
+    
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '$(pythonVersion)'
+      displayName: 'Set up Python'
+    
+    - script: |
+        python -m pip install --upgrade pip
+        pip install sqlalchemy pyodbc pandas openpyxl
+      displayName: 'Install Dependencies'
+    
+    - task: AzureKeyVault@2
+      condition: eq('${{ parameters.includeDatabaseValidation }}', true)
+      inputs:
+        azureSubscription: '$(azureServiceConnection)'
+        KeyVaultName: '$(keyVaultName)'
+        SecretsFilter: 'sql-server-connection,sql-username,sql-password'
+      displayName: 'Get SQL Secrets'
+    
+    - script: |
+        python quick-sql-analyzer.py --directory "${{ parameters.targetDirectory }}" --output "analysis-output/sql-dependencies.sql" --json-output "analysis-output/sql-dependencies.json"
+      displayName: 'Run Analysis'
+      env:
+        SQL_SERVER: $(sql-server-connection)
+        SQL_USERNAME: $(sql-username)
+        SQL_PASSWORD: $(sql-password)
+    
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: 'analysis-output'
+        artifactName: 'sql-analysis-results'
+      displayName: 'Publish Results'

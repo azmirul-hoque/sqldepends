@@ -66,6 +66,45 @@ analysis_*.sql
 analysis_*.json
 analysis_*.csv
 
-# Test files
+# Analysis directories and generated files
+analysis-input/
+analysis-output/
+analysis-artifacts/
+analysis-reports/
+sql-analysis-tools/
+mbox-*/
+**/analysis-*
+
+# Generated reports and outputs
+*.xlsx
+*analysis*.sql
+*analysis*.json
+*dependencies*.sql
+*dependencies*.json
+MBOX-ANALYSIS-*.md
+*-ANALYSIS-*.md
+ci-summary.json
+build-summary.md
+summary.md
+*.sarif
+
+# PowerShell temporary files
+copied-files.txt
+skipped-files.txt
+missing-files.txt
+files-by-extension.txt
+
+# CI/CD artifacts
+artifacts/
+reports/
+test-results/
+
+# Test files and temporary analysis
 test_output/
 test_results/
+temp_analysis/
+
+# MBox platform specific exclusions
+Run-MBox*.ps1.backup
+*.ps1.old
+config-*.json.backup

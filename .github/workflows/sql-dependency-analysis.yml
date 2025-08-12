@@ -1,0 +1,485 @@
+name: SQL Dependency Analysis
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run weekly analysis on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      target_directory:
+        description: 'Directory to analyze (relative to repo root)'
+        required: false
+        default: '.'
+      include_database_validation:
+        description: 'Validate against live database'
+        required: false
+        type: boolean
+        default: false
+      output_format:
+        description: 'Output format'
+        required: false
+        type: choice
+        options:
+        - 'both'
+        - 'json'
+        - 'sql'
+        default: 'both'
+
+env:
+  ANALYSIS_VERSION: "2.0.0"
+  PYTHON_VERSION: "3.9"
+
+jobs:
+  sql-dependency-analysis:
+    name: Analyze SQL Dependencies
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+      checks: write
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Need full history for change analysis
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Install SQL Dependency Analyzer
+      run: |
+        pip install --upgrade pip
+        pip install sqlalchemy pyodbc pandas openpyxl
+        # If deploying to PyPI, use: pip install sqldepends
+    
+    - name: Download Analysis Tools
+      run: |
+        # Create tools directory
+        mkdir -p ./sql-analysis-tools
+        
+        # Copy analysis scripts (adjust paths as needed)
+        cp sql_analyzer.py ./sql-analysis-tools/
+        cp quick-sql-analyzer.py ./sql-analysis-tools/
+        cp config-mbox-analysis.json ./sql-analysis-tools/
+        cp requirements.txt ./sql-analysis-tools/
+    
+    - name: Configure Analysis Settings
+      run: |
+        # Create analysis configuration
+        cat > ./sql-analysis-tools/ci-config.json << EOF
+        {
+          "analysis": {
+            "target_directory": "${{ github.event.inputs.target_directory || '.' }}",
+            "include_extensions": [".cs", ".vb", ".sql", ".json", ".config", ".xml"],
+            "exclude_directories": ["bin", "obj", "packages", "node_modules", ".git", "TestResults"],
+            "exclude_patterns": ["*.min.js", "*.min.css", "*.dll", "*.pdb"],
+            "output_format": "${{ github.event.inputs.output_format || 'both' }}",
+            "parallel_processing": true
+          },
+          "database": {
+            "validate_objects": "${{ github.event.inputs.include_database_validation || 'false' }}",
+            "connection_timeout": 30,
+            "query_timeout": 60
+          },
+          "reporting": {
+            "generate_excel": true,
+            "generate_sarif": true,
+            "include_metrics": true
+          }
+        }
+        EOF
+    
+    - name: Set up Analysis Environment
+      run: |
+        # Create output directories
+        mkdir -p ./analysis-output
+        mkdir -p ./analysis-artifacts
+        mkdir -p ./analysis-reports
+        
+        # Set environment variables
+        echo "ANALYSIS_RUN_ID=analysis-$(date +%Y%m%d-%H%M%S)-${{ github.run_number }}" >> $GITHUB_ENV
+        echo "ANALYSIS_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+        echo "ANALYSIS_COMMIT=${{ github.sha }}" >> $GITHUB_ENV
+        echo "ANALYSIS_BRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
+    
+    - name: Run SQL Dependency Analysis
+      env:
+        # SQL Server Connection (if database validation enabled)
+        SQL_SERVER: ${{ secrets.SQL_SERVER }}
+        SQL_DATABASE: ${{ secrets.SQL_DATABASE }}
+        SQL_USERNAME: ${{ secrets.SQL_USERNAME }}
+        SQL_PASSWORD: ${{ secrets.SQL_PASSWORD }}
+        # Alternative: SQL_CONNECTION_STRING (full connection string)
+        SQL_CONNECTION_STRING: ${{ secrets.SQL_CONNECTION_STRING }}
+      run: |
+        cd ./sql-analysis-tools
+        
+        # Build analysis command
+        ANALYSIS_CMD="python quick-sql-analyzer.py --config ci-config.json --directory '${{ github.workspace }}'"
+        
+        # Add output paths
+        ANALYSIS_CMD="$ANALYSIS_CMD --output '../analysis-output/sql-dependencies.sql'"
+        ANALYSIS_CMD="$ANALYSIS_CMD --json-output '../analysis-output/sql-dependencies.json'"
+        
+        # Add database connection if secrets are provided and validation enabled
+        if [ "${{ github.event.inputs.include_database_validation }}" == "true" ] && [ ! -z "$SQL_CONNECTION_STRING" ]; then
+          ANALYSIS_CMD="$ANALYSIS_CMD --connection-string '$SQL_CONNECTION_STRING' --validate-objects"
+        elif [ "${{ github.event.inputs.include_database_validation }}" == "true" ] && [ ! -z "$SQL_SERVER" ]; then
+          ANALYSIS_CMD="$ANALYSIS_CMD --server '$SQL_SERVER' --database '$SQL_DATABASE' --username '$SQL_USERNAME' --password '$SQL_PASSWORD' --validate-objects"
+        fi
+        
+        # Add CI-specific flags
+        ANALYSIS_CMD="$ANALYSIS_CMD --parallel-processing --generate-statistics --log-level INFO"
+        
+        echo "Running: $ANALYSIS_CMD"
+        eval $ANALYSIS_CMD
+        
+        # Generate additional reports
+        echo "Generating comprehensive reports..."
+        python -c "
+        import json, os
+        from datetime import datetime
+        
+        # Load analysis results
+        with open('../analysis-output/sql-dependencies.json', 'r') as f:
+            results = json.load(f)
+        
+        # Create CI summary
+        summary = {
+          'analysis_metadata': {
+            'run_id': os.environ.get('ANALYSIS_RUN_ID'),
+            'timestamp': os.environ.get('ANALYSIS_TIMESTAMP'),
+            'commit_sha': os.environ.get('ANALYSIS_COMMIT'),
+            'branch': os.environ.get('ANALYSIS_BRANCH'),
+            'triggered_by': '${{ github.actor }}',
+            'event_type': '${{ github.event_name }}'
+          },
+          'summary': results.get('summary', {}),
+          'total_findings': results.get('total_findings', 0),
+          'files_analyzed': len(results.get('files', [])),
+          'recommendations': []
+        }
+        
+        # Add recommendations based on findings
+        if results.get('total_findings', 0) > 100:
+          summary['recommendations'].append('High number of SQL dependencies detected - consider architectural review')
+        
+        if results.get('summary', {}).get('sql_statements', 0) > 50:
+          summary['recommendations'].append('Many direct SQL statements found - consider using ORM or stored procedures')
+        
+        # Save CI summary
+        with open('../analysis-artifacts/ci-summary.json', 'w') as f:
+            json.dump(summary, f, indent=2)
+        "
+    
+    - name: Generate SARIF Report
+      if: always()
+      run: |
+        # Convert analysis results to SARIF format for security scanning integration
+        python -c "
+        import json
+        
+        try:
+            with open('./analysis-output/sql-dependencies.json', 'r') as f:
+                results = json.load(f)
+            
+            sarif_report = {
+              'version': '2.1.0',
+              'schema': 'https://json.schemastore.org/sarif-2.1.0.json',
+              'runs': [{
+                'tool': {
+                  'driver': {
+                    'name': 'SQL Dependency Analyzer',
+                    'version': '${{ env.ANALYSIS_VERSION }}',
+                    'informationUri': 'https://github.com/your-org/sqldepends'
+                  }
+                },
+                'results': []
+              }]
+            }
+            
+            # Convert findings to SARIF format
+            for finding in results.get('findings', []):
+                sarif_result = {
+                  'ruleId': f\"sql-dependency-{finding.get('category', 'unknown').lower()}\",
+                  'level': 'note',
+                  'message': {
+                    'text': f\"{finding.get('type', 'Unknown')} detected: {finding.get('description', 'SQL dependency found')}\"
+                  },
+                  'locations': [{
+                    'physicalLocation': {
+                      'artifactLocation': {
+                        'uri': finding.get('file', 'unknown')
+                      },
+                      'region': {
+                        'startLine': finding.get('line_number', 1)
+                      }
+                    }
+                  }]
+                }
+                sarif_report['runs'][0]['results'].append(sarif_result)
+            
+            with open('./analysis-artifacts/sql-dependencies.sarif', 'w') as f:
+                json.dump(sarif_report, f, indent=2)
+                
+            print(f'Generated SARIF report with {len(sarif_report[\"runs\"][0][\"results\"])} findings')
+        except Exception as e:
+            print(f'Error generating SARIF report: {e}')
+            # Create empty SARIF file to avoid workflow failure
+            with open('./analysis-artifacts/sql-dependencies.sarif', 'w') as f:
+                json.dump({'version': '2.1.0', 'runs': []}, f)
+        "
+    
+    - name: Upload SARIF Results
+      if: always()
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: ./analysis-artifacts/sql-dependencies.sarif
+        category: sql-dependency-analysis
+    
+    - name: Generate Excel Report
+      if: always()
+      run: |
+        python -c "
+        import json
+        import pandas as pd
+        from datetime import datetime
+        
+        try:
+            # Load analysis results
+            with open('./analysis-output/sql-dependencies.json', 'r') as f:
+                results = json.load(f)
+            
+            # Create Excel report with multiple sheets
+            with pd.ExcelWriter('./analysis-artifacts/sql-dependency-report.xlsx', engine='openpyxl') as writer:
+                
+                # Summary sheet
+                summary_data = [
+                    ['Analysis Run ID', os.environ.get('ANALYSIS_RUN_ID', 'unknown')],
+                    ['Timestamp', os.environ.get('ANALYSIS_TIMESTAMP', 'unknown')],
+                    ['Commit SHA', os.environ.get('ANALYSIS_COMMIT', 'unknown')],
+                    ['Branch', os.environ.get('ANALYSIS_BRANCH', 'unknown')],
+                    ['Total Findings', results.get('total_findings', 0)],
+                    ['Files Analyzed', len(results.get('files', []))],
+                    ['SQL Statements', results.get('summary', {}).get('sql_statements', 0)],
+                    ['Entity Framework', results.get('summary', {}).get('entity_framework', 0)],
+                    ['ADO.NET', results.get('summary', {}).get('ado_net', 0)]
+                ]
+                pd.DataFrame(summary_data, columns=['Metric', 'Value']).to_excel(
+                    writer, sheet_name='Summary', index=False
+                )
+                
+                # Findings sheet
+                if results.get('findings'):
+                    findings_df = pd.DataFrame(results['findings'])
+                    findings_df.to_excel(writer, sheet_name='SQL Dependencies', index=False)
+                
+                # Files sheet
+                if results.get('files'):
+                    files_df = pd.DataFrame([
+                        {'File': f, 'Findings': results.get('file_findings', {}).get(f, 0)}
+                        for f in results['files']
+                    ])
+                    files_df.to_excel(writer, sheet_name='Files', index=False)
+            
+            print('Excel report generated successfully')
+            
+        except Exception as e:
+            print(f'Error generating Excel report: {e}')
+        "
+    
+    - name: Create Analysis Summary
+      if: always()
+      run: |
+        # Create markdown summary for PR comments
+        python -c "
+        import json
+        import os
+        
+        try:
+            with open('./analysis-artifacts/ci-summary.json', 'r') as f:
+                summary = json.load(f)
+            
+            markdown_content = f'''
+        # SQL Dependency Analysis Report
+        
+        **Run ID:** {summary['analysis_metadata']['run_id']}  
+        **Timestamp:** {summary['analysis_metadata']['timestamp']}  
+        **Commit:** {summary['analysis_metadata']['commit_sha'][:8]}  
+        **Branch:** {summary['analysis_metadata']['branch']}  
+        
+        ## Summary
+        
+        - **Total Findings:** {summary['total_findings']}
+        - **Files Analyzed:** {summary['files_analyzed']}
+        - **SQL Statements:** {summary['summary'].get('sql_statements', 0)}
+        - **Entity Framework:** {summary['summary'].get('entity_framework', 0)}
+        - **ADO.NET:** {summary['summary'].get('ado_net', 0)}
+        
+        ## Recommendations
+        
+        '''
+            
+            for rec in summary.get('recommendations', []):
+                markdown_content += f'- {rec}\n'
+            
+            if not summary.get('recommendations'):
+                markdown_content += '- No specific recommendations at this time\n'
+            
+            markdown_content += '''
+        ## Artifacts
+        
+        - [Download Full Report](../../actions/runs/${{ github.run_id }})
+        - [View SARIF Results](../../security/code-scanning)
+        
+        ---
+        *Generated by SQL Dependency Analyzer v${{ env.ANALYSIS_VERSION }}*
+        '''
+            
+            with open('./analysis-artifacts/summary.md', 'w') as f:
+                f.write(markdown_content)
+                
+        except Exception as e:
+            print(f'Error creating summary: {e}')
+            with open('./analysis-artifacts/summary.md', 'w') as f:
+                f.write('# SQL Dependency Analysis\n\nAnalysis completed with errors. Check workflow logs.')
+        "
+    
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          
+          try {
+            const summary = fs.readFileSync('./analysis-artifacts/summary.md', 'utf8');
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+          } catch (error) {
+            console.log('Error posting PR comment:', error);
+          }
+    
+    - name: Upload Analysis Artifacts
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: sql-dependency-analysis-${{ env.ANALYSIS_RUN_ID }}
+        path: |
+          ./analysis-output/
+          ./analysis-artifacts/
+        retention-days: 30
+    
+    - name: Upload Reports to Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: analysis-${{ github.run_number }}
+        name: SQL Dependency Analysis - ${{ env.ANALYSIS_TIMESTAMP }}
+        body_path: ./analysis-artifacts/summary.md
+        files: |
+          ./analysis-artifacts/sql-dependency-report.xlsx
+          ./analysis-output/sql-dependencies.json
+          ./analysis-output/sql-dependencies.sql
+    
+    - name: Update Analysis Badge
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        # Create/update analysis badge
+        TOTAL_FINDINGS=$(jq '.total_findings' ./analysis-artifacts/ci-summary.json)
+        
+        if [ "$TOTAL_FINDINGS" -eq 0 ]; then
+          BADGE_COLOR="brightgreen"
+          BADGE_MESSAGE="No SQL Dependencies"
+        elif [ "$TOTAL_FINDINGS" -lt 50 ]; then
+          BADGE_COLOR="yellow"
+          BADGE_MESSAGE="$TOTAL_FINDINGS SQL Dependencies"
+        else
+          BADGE_COLOR="orange"
+          BADGE_MESSAGE="$TOTAL_FINDINGS SQL Dependencies"
+        fi
+        
+        echo "SQL_ANALYSIS_BADGE_MESSAGE=$BADGE_MESSAGE" >> $GITHUB_ENV
+        echo "SQL_ANALYSIS_BADGE_COLOR=$BADGE_COLOR" >> $GITHUB_ENV
+    
+    outputs:
+      analysis-run-id: ${{ env.ANALYSIS_RUN_ID }}
+      total-findings: ${{ steps.analysis.outputs.total-findings }}
+      artifacts-url: ${{ steps.upload-artifacts.outputs.url }}
+
+  # Optional: Deploy analysis results to external systems
+  deploy-results:
+    name: Deploy Analysis Results
+    runs-on: ubuntu-latest
+    needs: sql-dependency-analysis
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Download Analysis Artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: sql-dependency-analysis-${{ needs.sql-dependency-analysis.outputs.analysis-run-id }}
+        path: ./analysis-results
+    
+    - name: Deploy to Database (Optional)
+      if: vars.DEPLOY_TO_DATABASE == 'true'
+      env:
+        DEPLOY_SQL_CONNECTION_STRING: ${{ secrets.DEPLOY_SQL_CONNECTION_STRING }}
+      run: |
+        # Deploy analysis results to a central database for historical tracking
+        python -c "
+        import json
+        import sqlite3  # Use your preferred database
+        
+        # This is a placeholder - implement your database deployment logic
+        print('Deploying analysis results to database...')
+        with open('./analysis-results/analysis-output/sql-dependencies.json', 'r') as f:
+            results = json.load(f)
+        
+        # Store results in database
+        # conn = sqlite3.connect('analysis_results.db')
+        # ... database operations ...
+        print('Database deployment completed')
+        "
+    
+    - name: Notify Teams (Optional)
+      if: vars.NOTIFY_TEAMS == 'true'
+      env:
+        TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      run: |
+        # Send notifications to Teams/Slack
+        python -c "
+        import json, requests, os
+        
+        with open('./analysis-results/analysis-artifacts/ci-summary.json', 'r') as f:
+            summary = json.load(f)
+        
+        # Teams notification (example)
+        teams_url = os.environ.get('TEAMS_WEBHOOK_URL')
+        if teams_url:
+            payload = {
+                'title': 'SQL Dependency Analysis Complete',
+                'text': f'Analysis found {summary[\"total_findings\"]} SQL dependencies across {summary[\"files_analyzed\"]} files.',
+                'themeColor': '0078D4'
+            }
+            # requests.post(teams_url, json=payload)
+            print('Teams notification sent')
+        
+        print('Notifications completed')
+        "

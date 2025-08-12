@@ -1,0 +1,203 @@
+trigger:
+  branches:
+    include:
+    - main
+    - master
+  paths:
+    include:
+    - sql_analyzer.py
+    - Analyze-SqlCode.ps1
+    - config.json
+    - requirements.txt
+    - README.md
+    - sql/*
+    - examples/*
+
+pr:
+  branches:
+    include:
+    - main
+    - master
+  paths:
+    include:
+    - sql_analyzer.py
+    - Analyze-SqlCode.ps1
+    - config.json
+    - requirements.txt
+    - README.md
+    - sql/*
+    - examples/*
+
+variables:
+  pythonVersion: '3.11'
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: UpdateClaudeMD
+  displayName: 'Update CLAUDE.md Documentation'
+  jobs:
+  - job: AnalyzeAndUpdate
+    displayName: 'Analyze Codebase and Update Documentation'
+    pool:
+      vmImage: $(vmImage)
+    
+    steps:
+    - checkout: self
+      fetchDepth: 0
+      persistCredentials: true
+
+    - task: UsePythonVersion@0
+      displayName: 'Set up Python $(pythonVersion)'
+      inputs:
+        versionSpec: $(pythonVersion)
+        addToPath: true
+
+    - script: |
+        pip install -r requirements.txt
+        pip install anthropic requests pyyaml gitpython
+      displayName: 'Install dependencies'
+
+    - script: |
+        python scripts/analyze_codebase_changes.py > changes_summary.txt
+        if [ -s changes_summary.txt ]; then
+          echo "##vso[task.setvariable variable=changesDetected]true"
+          echo "Changes detected in codebase"
+        else
+          echo "##vso[task.setvariable variable=changesDetected]false"
+          echo "No significant changes detected"
+        fi
+      displayName: 'Analyze codebase changes'
+
+    - script: |
+        python scripts/generate_claude_md.py \
+          --input-dir . \
+          --output CLAUDE.md.new \
+          --changes-summary changes_summary.txt \
+          --include-git-info \
+          --build-id $(Build.BuildId) \
+          --build-url $(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)
+      displayName: 'Generate updated CLAUDE.md'
+      condition: or(eq(variables.changesDetected, 'true'), eq(variables['Build.Reason'], 'Manual'))
+
+    - script: |
+        if [ -f CLAUDE.md ] && [ -f CLAUDE.md.new ]; then
+          if ! diff -q CLAUDE.md CLAUDE.md.new > /dev/null; then
+            echo "##vso[task.setvariable variable=claudeMdChanged]true"
+            echo "Changes detected in CLAUDE.md content"
+            # Generate diff for review
+            diff -u CLAUDE.md CLAUDE.md.new > claude_md.diff || true
+          else
+            echo "##vso[task.setvariable variable=claudeMdChanged]false"
+            echo "No changes in CLAUDE.md content"
+          fi
+        else
+          echo "##vso[task.setvariable variable=claudeMdChanged]true"
+          echo "CLAUDE.md file missing or new file created"
+        fi
+      displayName: 'Compare CLAUDE.md versions'
+      condition: or(eq(variables.changesDetected, 'true'), eq(variables['Build.Reason'], 'Manual'))
+
+    - script: |
+        mv CLAUDE.md.new CLAUDE.md
+        echo "CLAUDE.md updated with latest codebase changes"
+      displayName: 'Update CLAUDE.md file'
+      condition: eq(variables.claudeMdChanged, 'true')
+
+    - script: |
+        git config --local user.email "azure-devops@pipeline.com"
+        git config --local user.name "Azure DevOps Pipeline"
+        git add CLAUDE.md
+        
+        # Create commit message with changes summary
+        echo "🤖 Auto-update CLAUDE.md documentation" > commit_msg.txt
+        echo "" >> commit_msg.txt
+        echo "Updated based on changes to:" >> commit_msg.txt
+        head -10 changes_summary.txt >> commit_msg.txt
+        echo "" >> commit_msg.txt
+        echo "Generated at: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> commit_msg.txt
+        echo "Build: $(Build.BuildNumber)" >> commit_msg.txt
+        echo "Commit: $(Build.SourceVersion)" >> commit_msg.txt
+        
+        git commit -F commit_msg.txt || exit 0
+      displayName: 'Commit CLAUDE.md changes'
+      condition: and(eq(variables.claudeMdChanged, 'true'), eq(variables['Build.Reason'], 'IndividualCI'))
+
+    - script: |
+        git push origin HEAD:$(Build.SourceBranchName)
+      displayName: 'Push changes to repository'
+      condition: and(eq(variables.claudeMdChanged, 'true'), eq(variables['Build.Reason'], 'IndividualCI'))
+
+    - task: PowerShell@2
+      displayName: 'Create Pull Request'
+      condition: and(eq(variables.claudeMdChanged, 'true'), eq(variables['Build.Reason'], 'PullRequest'))
+      inputs:
+        targetType: 'inline'
+        script: |
+          # Install Azure DevOps CLI extension
+          az extension add --name azure-devops
+          
+          # Set organization and project
+          az devops configure --defaults organization=$(System.TeamFoundationCollectionUri) project=$(System.TeamProject)
+          
+          # Create PR with updated CLAUDE.md
+          $prTitle = "🤖 Update CLAUDE.md documentation (Build $(Build.BuildNumber))"
+          $prDescription = @"
+          ## Automated CLAUDE.md Update
+          
+          This PR updates the CLAUDE.md file based on detected changes in the codebase.
+          
+          ### Changes Detected:
+          ``````
+          $(Get-Content changes_summary.txt -Raw)
+          ``````
+          
+          ### Build Information:
+          - Build ID: $(Build.BuildId)
+          - Build Number: $(Build.BuildNumber)
+          - Source Commit: $(Build.SourceVersion)
+          - Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+          
+          **Note:** This is an automated update. Please review the changes before merging.
+          "@
+          
+          # Create branch for PR
+          $branchName = "update-claude-md-$(Build.BuildNumber)"
+          git checkout -b $branchName
+          git push origin $branchName
+          
+          # Create PR
+          az repos pr create `
+            --source-branch $branchName `
+            --target-branch $(System.PullRequest.TargetBranch) `
+            --title $prTitle `
+            --description $prDescription `
+            --auto-complete true `
+            --squash true `
+            --delete-source-branch true
+      env:
+        AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish artifacts'
+      condition: always()
+      inputs:
+        pathToPublish: '.'
+        artifactName: 'claude-md-update-artifacts'
+        includeRootFolder: false
+        artifactType: 'container'
+        parallel: true
+        parallelCount: 8
+        fileCopyOptions: |
+          changes_summary.txt
+          CLAUDE.md*
+          claude_md.diff
+          commit_msg.txt
+
+    - task: PublishTestResults@2
+      displayName: 'Publish documentation validation results'
+      condition: always()
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: 'documentation_validation.xml'
+        failTaskOnFailedTests: false
+        testRunTitle: 'CLAUDE.md Documentation Validation'

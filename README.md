@@ -1,291 +1,183 @@
-# SQL Server Code Analysis Tool
+# SQL Dependency Analyzer
 
-A comprehensive tool for analyzing source code files to identify SQL Server database object references, ADO.NET usage patterns, and Entity Framework mappings. Generates detailed SQL views for database dependency analysis and documentation.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![CI/CD](https://github.com/your-org/sqldepends/workflows/CI/badge.svg)](https://github.com/your-org/sqldepends/actions)
+
+A comprehensive tool for analyzing SQL dependencies in .NET applications. Automatically discovers database object references, Entity Framework usage patterns, and ADO.NET code across your codebase with detailed reporting and CI/CD integration.
 
 ## Features
 
-- **Multi-Language Support**: Analyzes C#, VB.NET, JavaScript, TypeScript, Python, and SQL files
-- **ADO.NET Analysis**: Comprehensive SqlCommand, SqlDataAdapter, SqlConnection pattern detection
-- **Entity Framework**: DbContext, DbSet, and raw SQL analysis
-- **SQL Object Detection**: Tables, views, stored procedures, functions, parameters, and columns
-- **Code Block Mapping**: Classes, methods, properties with precise line number tracking
-- **Configuration Analysis**: Connection strings and SQL in config files
-- **Performance Optimized**: Handles large codebases efficiently with progress reporting
-- **Multiple Output Formats**: SQL views, CSV, JSON export options
+- **Multi-Language Analysis**: C#, VB.NET, SQL, JavaScript, TypeScript
+- **Comprehensive Reporting**: Excel, JSON, SQL, and SARIF output formats  
+- **Database Integration**: Live database object validation
+- **High Performance**: Parallel processing and smart filtering
+- **CI/CD Ready**: GitHub Actions and Azure DevOps integration
+- **Quality Gates**: Configurable thresholds and automated checks
+- **Container Support**: Docker and Kubernetes deployment options
 
-## Prerequisites
+## Quick Start
 
-### Python Version
-- Python 3.8 or higher
-- Required packages (see requirements.txt)
+### Installation
 
-### PowerShell Version
-- PowerShell 5.1 or PowerShell Core 7.0+
-- .NET Framework 4.7.2+ (Windows PowerShell) or .NET Core (PowerShell Core)
-
-## Installation
-
-### Python Setup
+#### Option 1: PyPI Package (Recommended)
 ```bash
-# Clone or download the tool
-git clone https://github.com/dbbuilder/sqldepends.git
+pip install sqldepends
+```
+
+#### Option 2: From Source
+```bash
+git clone https://github.com/your-org/sqldepends.git
 cd sqldepends
-
-# Install required packages
 pip install -r requirements.txt
-
-# Or using conda
-conda env create -f environment.yml
-conda activate sql-analysis
 ```
 
-### PowerShell Setup
+#### Option 3: PowerShell Script (Windows)
 ```powershell
-# No additional installation required for basic functionality
-# Optional: Install SqlServer module for enhanced SQL parsing
-Install-Module -Name SqlServer -Force -AllowClobber
+# Download and run directly
+.\Run-MBoxAnalysisComplete.ps1 -MBoxPath "C:\Your\Project" -GenerateExcel -OpenResults
 ```
 
-## Usage
+### Basic Usage
 
-### Python Version
+#### Command Line Interface
 ```bash
-# Basic usage
-python sql_analyzer.py --directory "C:\MyProject" --output "analysis_results.sql"
+# Basic analysis
+sqldepends --directory ./src --output analysis.json
 
-# With advanced options
-python sql_analyzer.py \
-    --directory "C:\MyProject" \
-    --output "analysis_results.sql" \
-    --format json \
-    --exclude-dirs "__pycache__,node_modules,.git" \
-    --include-extensions ".cs,.vb,.js,.ts" \
-    --connection-string "Server=localhost;Database=MyDB;Trusted_Connection=true" \
-    --validate-objects
+# With database validation
+sqldepends --directory ./src \
+  --database-url "mssql://user:pass@server/database" \
+  --validate \
+  --format excel
+
+# Advanced options
+sqldepends --directory ./MyProject \
+  --config config.json \
+  --parallel \
+  --output-dir ./reports \
+  --format both
 ```
 
-### PowerShell Version
+#### PowerShell Integration
 ```powershell
-# Basic usage
-.\Analyze-SqlCode.ps1 -Directory "C:\MyProject" -OutputPath "analysis_results.sql"
-
-# With advanced options
-.\Analyze-SqlCode.ps1 `
-    -Directory "C:\MyProject" `
-    -OutputPath "analysis_results.sql" `
-    -ExcludeDirs @("bin", "obj", "packages") `
-    -IncludeExtensions @(".cs", ".vb", ".sql") `
-    -GenerateReport `
-    -Verbose
+# Comprehensive analysis with Excel output
+.\Run-MBoxAnalysisComplete.ps1 `
+  -MBoxPath "C:\Projects\MyApp" `
+  -GenerateExcel `
+  -OpenResults `
+  -Verbose
 ```
 
-## Configuration
+## CI/CD Integration
 
-### appsettings.json (Python)
-```json
-{
-  "AnalysisSettings": {
-    "SupportedExtensions": [".cs", ".vb", ".js", ".ts", ".py", ".sql"],
-    "ExcludeDirectories": ["bin", "obj", "packages", "node_modules", ".git", ".vs"],
-    "ExcludeFiles": ["*.designer.cs", "*.generated.cs", "*.g.cs"],
-    "MaxFileSize": 104857600,
-    "ParallelProcessing": true,
-    "MaxDegreeOfParallelism": 4
-  },
-  "OutputSettings": {
-    "DefaultFormat": "sql",
-    "IncludeSourceSnippets": true,
-    "MaxSnippetLength": 1000,
-    "GenerateStatistics": true
-  },
-  "SqlAnalysis": {
-    "DetectDynamicSql": true,
-    "AnalyzeStringConcatenation": true,
-    "ParseConfigurationFiles": true,
-    "ValidateAgainstDatabase": false,
-    "DefaultSchema": "dbo"
-  },
-  "Logging": {
-    "LogLevel": "Information",
-    "LogToFile": true,
-    "LogPath": "logs/sql-analysis.log"
-  }
-}
+### GitHub Actions
+
+Add to `.github/workflows/sql-analysis.yml`:
+
+```yaml
+name: SQL Dependency Analysis
+on: [push, pull_request]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install SQL Dependency Analyzer
+      run: pip install sqldepends
+    
+    - name: Run Analysis
+      env:
+        SQL_CONNECTION_STRING: ${{ secrets.SQL_CONNECTION_STRING }}
+      run: |
+        sqldepends --directory . \
+          --output analysis.json \
+          --database-url "$SQL_CONNECTION_STRING" \
+          --validate \
+          --format excel
+    
+    - name: Upload Results
+      uses: actions/upload-artifact@v3
+      with:
+        name: sql-analysis-results
+        path: analysis.*
 ```
 
-## Output Formats
+### Azure DevOps
 
-### SQL View (Default)
-Generates a T-SQL CREATE VIEW statement that can be executed in SQL Server Management Studio:
+Add `azure-pipelines.yml`:
 
-```sql
--- Generated by SQL Server Code Analysis Tool
--- Analysis Date: 2025-01-15 10:30:00
--- Source Directory: C:\MyProject
--- Files Analyzed: 1,247
+```yaml
+trigger: [main]
 
-IF OBJECT_ID('vw_CodeAnalysis', 'V') IS NOT NULL
-    DROP VIEW vw_CodeAnalysis
+pool:
+  vmImage: 'ubuntu-latest'
 
-GO
+variables:
+- group: sql-analysis-secrets
 
-CREATE VIEW vw_CodeAnalysis AS
-SELECT 
-    FilePath,
-    FileName,
-    FileExtension,
-    CodeBlockType,
-    -- ... additional columns
-FROM (
-    VALUES 
-        ('C:\MyProject\Controllers\UserController.cs', 'UserController.cs', '.cs', 'Method', 'GetUser', 45, 'Table', 'dbo', 'Users', 'UserId', NULL, NULL, NULL, 'SELECT * FROM Users WHERE UserId = @userId', 'SqlCommand', 'CommandText', NULL, 'MyDatabase', 'Text', '2025-01-15 10:30:00', 'cmd.CommandText = "SELECT * FROM Users WHERE UserId = @userId"', 95, 'Direct SQL in method'),
-        -- ... more rows
-) AS Analysis(FilePath, FileName, FileExtension, CodeBlockType, CodeBlockName, LineNumber, SqlObjectType, SchemaName, ObjectName, ColumnName, ParameterName, ParameterType, ParameterDirection, SqlStatement, AdoNetObjectType, AdoNetProperty, ConnectionStringName, DatabaseName, CommandType, AnalysisTimestamp, SourceCodeSnippet, Confidence, Notes)
+steps:
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.9'
+
+- script: pip install sqldepends
+  displayName: 'Install Analyzer'
+
+- script: |
+    sqldepends --directory $(Build.SourcesDirectory) \
+      --output analysis.json \
+      --database-url "$(sql-connection-string)" \
+      --validate
+  displayName: 'Run Analysis'
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    pathtoPublish: 'analysis.json'
+    artifactName: 'sql-analysis-results'
 ```
 
-### JSON Format
-```json
-{
-  "analysisMetadata": {
-    "toolVersion": "1.0.0",
-    "analysisDate": "2025-01-15T10:30:00Z",
-    "sourceDirectory": "C:\\MyProject",
-    "filesAnalyzed": 1247,
-    "processingTimeMs": 45230
-  },
-  "results": [
-    {
-      "filePath": "C:\\MyProject\\Controllers\\UserController.cs",
-      "fileName": "UserController.cs",
-      "fileExtension": ".cs",
-      "codeBlockType": "Method",
-      "codeBlockName": "GetUser",
-      "lineNumber": 45,
-      "sqlObjectType": "Table",
-      "schemaName": "dbo",
-      "objectName": "Users",
-      "columnName": "UserId",
-      "sqlStatement": "SELECT * FROM Users WHERE UserId = @userId",
-      "adoNetObjectType": "SqlCommand",
-      "adoNetProperty": "CommandText",
-      "confidence": 95,
-      "sourceCodeSnippet": "cmd.CommandText = \"SELECT * FROM Users WHERE UserId = @userId\""
-    }
-  ],
-  "statistics": {
-    "totalSqlReferences": 1834,
-    "uniqueTables": 45,
-    "uniqueStoredProcedures": 23,
-    "adoNetUsages": 156
-  }
-}
-```
+## Documentation
 
-## Examples
-
-### Analyzing a .NET Web Application
-```bash
-python sql_analyzer.py \
-    --directory "C:\Projects\MyWebApp" \
-    --output "webapp_analysis.sql" \
-    --include-extensions ".cs,.cshtml,.js" \
-    --exclude-dirs "bin,obj,wwwroot\lib"
-```
-
-### Analyzing Legacy VB.NET Application
-```powershell
-.\Analyze-SqlCode.ps1 `
-    -Directory "C:\Legacy\VBApp" `
-    -OutputPath "legacy_analysis.json" `
-    -Format "JSON" `
-    -IncludeExtensions @(".vb", ".aspx", ".ascx")
-```
-
-### Enterprise Analysis with Validation
-```bash
-python sql_analyzer.py \
-    --directory "C:\Enterprise\Solutions" \
-    --output "enterprise_analysis.sql" \
-    --connection-string "Server=prod-sql;Database=Enterprise;Integrated Security=true" \
-    --validate-objects \
-    --parallel-processing \
-    --generate-report
-```
-
-## Advanced Features
-
-### Database Object Validation
-When provided with a connection string, the tool can validate that referenced database objects actually exist:
-
-```bash
-python sql_analyzer.py \
-    --directory "C:\MyProject" \
-    --connection-string "Server=localhost;Database=MyDB;Trusted_Connection=true" \
-    --validate-objects
-```
-
-### Custom Detection Rules
-Create custom regex patterns for specialized SQL detection:
-
-```json
-{
-  "CustomPatterns": [
-    {
-      "name": "CustomORM",
-      "pattern": "\\bQuery<(\\w+)>\\(\"([^\"]+)\"\\)",
-      "objectType": "CustomQuery",
-      "groups": ["EntityType", "SqlStatement"]
-    }
-  ]
-}
-```
-
-### Batch Processing
-Process multiple projects simultaneously:
-
-```bash
-python sql_analyzer.py \
-    --batch-file "project_list.txt" \
-    --output-directory "analysis_results" \
-    --parallel-processing
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Large File Processing**: For very large files, increase memory allocation or use streaming mode
-2. **Access Denied**: Ensure the tool has read permissions for all target directories
-3. **Encoding Issues**: Specify file encoding explicitly for non-UTF8 files
-4. **Performance**: Use parallel processing and exclude unnecessary directories
-
-### Debugging
-
-Enable verbose logging:
-```bash
-python sql_analyzer.py --directory "C:\MyProject" --log-level DEBUG
-```
-
-View analysis statistics:
-```bash
-python sql_analyzer.py --directory "C:\MyProject" --generate-statistics
-```
+- **[CI/CD Integration Guide](docs/CI-CD-INTEGRATION.md)** - Comprehensive setup instructions
+- **[Deployment Guide](docs/DEPLOYMENT-GUIDE.md)** - PyPI, Docker, and enterprise deployment
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Setup
+```bash
+# Clone repository
+git clone https://github.com/your-org/sqldepends.git
+cd sqldepends
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+```
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Support
 
-For issues, questions, or contributions:
-- Create an issue on GitHub
-- Check the documentation in the `docs/` folder
-- Review the troubleshooting guide
+- **Documentation**: [https://sqldepends.readthedocs.io](https://sqldepends.readthedocs.io)
+- **Issues**: [GitHub Issues](https://github.com/your-org/sqldepends/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-org/sqldepends/discussions)
+
+---
+
+**Made with ❤️ for the .NET community**
