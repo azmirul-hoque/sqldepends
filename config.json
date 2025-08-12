@@ -1,0 +1,59 @@
+{
+  "AnalysisSettings": {
+    "SupportedExtensions": [".cs", ".vb", ".js", ".ts", ".py", ".sql", ".cshtml", ".aspx", ".ascx"],
+    "ExcludeDirectories": ["bin", "obj", "packages", "node_modules", ".git", ".vs", "__pycache__", "temp", "tmp"],
+    "ExcludeFiles": ["*.designer.cs", "*.generated.cs", "*.g.cs", "*.AssemblyInfo.cs", "*.Designer.vb"],
+    "MaxFileSize": 104857600,
+    "ParallelProcessing": true,
+    "MaxDegreeOfParallelism": 4,
+    "ConfidenceThreshold": 50
+  },
+  "OutputSettings": {
+    "DefaultFormat": "sql",
+    "IncludeSourceSnippets": true,
+    "MaxSnippetLength": 1000,
+    "GenerateStatistics": true
+  },
+  "SqlAnalysis": {
+    "DetectDynamicSql": true,
+    "AnalyzeStringConcatenation": true,
+    "ParseConfigurationFiles": true,
+    "ValidateAgainstDatabase": false,
+    "DefaultSchema": "dbo",
+    "IncludeSystemObjects": false,
+    "DetectDeprecatedPatterns": true
+  },
+  "AdoNetAnalysis": {
+    "AnalyzeSqlCommands": true,
+    "AnalyzeSqlDataAdapters": true,
+    "AnalyzeConnections": true,
+    "AnalyzeParameters": true,
+    "DetectSqlInjectionRisks": true,
+    "AnalyzeTransactions": true
+  },
+  "EntityFrameworkAnalysis": {
+    "AnalyzeDbContext": true,
+    "AnalyzeDbSets": true,
+    "AnalyzeRawSql": true,
+    "AnalyzeMigrations": true,
+    "DetectN1Problems": true,
+    "AnalyzeLinqQueries": false
+  },
+  "Logging": {
+    "LogLevel": "Info",
+    "LogToFile": true,
+    "LogPath": "logs/sql-analysis.log",
+    "EnableVerboseOutput": false
+  },
+  "Performance": {
+    "EnableFileHashing": true,
+    "UseIncrementalAnalysis": true,
+    "CacheResults": true,
+    "OptimizeMemoryUsage": true
+  },
+  "Security": {
+    "LogConnectionStrings": false,
+    "MaskSensitiveData": true,
+    "ValidateFileAccess": true
+  }
+}
